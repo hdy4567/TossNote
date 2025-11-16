@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toss 스타일 다크 노트</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter 폰트 설정 -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            /* 토스 다크 스타일의 배경색 */
+            background-color: #121212; 
+            color: #E0E0E0; /* 기본 텍스트 색상 */
+        }
+        .note-card {
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .note-card:active {
+            transform: scale(0.99);
+            box-shadow: none;
+        }
+        /* 스크롤바 색상 변경 (다크 모드 가시성 개선) */
+        textarea::-webkit-scrollbar { width: 8px; }
+        textarea::-webkit-scrollbar-thumb { background-color: #3f3f46; border-radius: 4px; }
+        textarea::-webkit-scrollbar-track { background-color: #1f2937; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="app" class="max-w-md mx-auto relative pt-12 pb-24">
+        <!-- 상단 App Bar -->
+        <header class="fixed top-0 left-0 right-0 max-w-md mx-auto bg-[#121212] z-10 border-b border-gray-800 p-4">
+            <div class="flex justify-between items-center mb-1">
+                <h1 class="text-2xl font-extrabold text-gray-100">오늘의 노트들</h1>
+                <!-- 검색 및 필터 버튼 -->
+                <div class="flex space-x-2">
+                    <!-- 버튼 배경색 및 텍스트 색상 변경 -->
+                    <button id="filterButton" class="p-2 rounded-full bg-gray-800 text-gray-300 hover:bg-gray-700 transition shadow-sm">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 14.586V17h4v2H7v-2h4v-2.414l-7.707-7.707A1 1 0 013 6V4z"></path></svg>
+                    </button>
+                    <button id="calendarButton" class="p-2 rounded-full bg-gray-800 text-gray-300 hover:bg-gray-700 transition shadow-sm">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <!-- 사용자 ID 표시 -->
+            <p id="currentUserId" class="text-xs text-gray-500 truncate"></p>
+        </header>
+
+        <!-- 노트 목록 (실시간 업데이트 영역) -->
+        <div id="noteList" class="space-y-4 px-4 pt-4">
+            <!-- 노트가 여기에 동적으로 삽입됩니다. -->
+            <p id="loadingMessage" class="text-center text-gray-500 pt-10">노트를 불러오는 중...</p>
+        </div>
+
+        <!-- 하단 플로팅 버튼: 빠른 신규 메모 (+) -->
+        <button id="fab" class="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg transition duration-150 ease-in-out hover:scale-105" style="background-color: #5567F7; box-shadow: 0 4px 12px rgba(85, 103, 247, 0.6);">
+            <svg class="w-8 h-8 text-white mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+        </button>
+    </div>
+
+    <!-- 신규 메모 생성 모달 (One Screen, One Message 원칙 적용) -->
+    <div id="newNoteModal" class="hidden fixed inset-0 bg-black bg-opacity-70 z-20 flex items-center justify-center p-4">
+        <div class="bg-[#1f2937] w-full max-w-sm rounded-2xl shadow-2xl p-6 transform transition duration-300">
+            <h2 class="text-xl font-bold mb-6 text-center text-gray-100">새로운 메모 생성</h2>
+            
+            <!-- 1. 메모 종류 선택 (분기) -->
+            <div id="noteTypeSelection" class="space-y-4">
+                <button data-type="TEXT" class="note-type-btn w-full py-4 px-4 rounded-xl border-2 border-gray-700 text-lg font-semibold flex justify-center items-center hover:bg-gray-800 transition text-gray-200">
+                    <span class="mr-2">📝</span> 텍스트 메모
+                </button>
+                <button data-type="CHECKLIST" class="note-type-btn w-full py-4 px-4 rounded-xl border-2 border-gray-700 text-lg font-semibold flex justify-center items-center hover:bg-gray-800 transition text-gray-200">
+                    <span class="mr-2">✅</span> 체크리스트
+                </button>
+            </div>
+
+            <!-- 2. 메모 입력 및 색상 선택 (공통 입력 필드) -->
+            <div id="noteInputForm" class="hidden space-y-4">
+                <textarea id="noteContent" rows="5" placeholder="내용을 입력하세요. (제목은 첫 줄로 자동 지정됩니다.)"
+                    class="w-full p-3 border-none bg-[#242424] text-gray-200 rounded-xl focus:ring-[#5567F7] focus:border-[#5567F7] text-base resize-none placeholder-gray-500"></textarea>
+
+                <!-- 색상 라벨 선택 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">색상 라벨 선택</label>
+                    <div id="colorPicker" class="flex justify-between space-x-2">
+                        <!-- 색상 버튼이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <div class="flex justify-between space-x-3 pt-4">
+                    <button id="cancelNote" class="w-1/2 py-3 rounded-xl bg-gray-700 text-gray-200 font-semibold hover:bg-gray-600 transition">취소</button>
+                    <button id="saveNote" class="w-1/2 py-3 rounded-xl text-white font-semibold transition" style="background-color: #5567F7;">저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Firebase Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            query, 
+            onSnapshot, 
+            addDoc, 
+            Timestamp,
+            setLogLevel 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firestore 로그 레벨 설정 (디버깅용)
+        setLogLevel('debug');
+
+        // Firestore 및 Auth 객체
+        let app, db, auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        // Firebase 설정 (전역 변수 사용)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // 노트 컬러 스펙트럼 (토스 파스텔 톤)
+        const TOSS_COLORS = [
+            '#86A8FC', // 소프트 블루
+            '#8AE9CA', // 민트
+            '#FFB3E0', // 핑크
+            '#FFD496', // 소프트 오렌지
+            '#C7C7C7', // 라이트 그레이
+        ];
+        let selectedColor = TOSS_COLORS[0];
+        let selectedNoteType = null;
+        
+        // UI 요소 캐시
+        const fab = document.getElementById('fab');
+        const modal = document.getElementById('newNoteModal');
+        const noteTypeSelection = document.getElementById('noteTypeSelection');
+        const noteInputForm = document.getElementById('noteInputForm');
+        const noteContent = document.getElementById('noteContent');
+        const colorPicker = document.getElementById('colorPicker');
+        const saveButton = document.getElementById('saveNote');
+        const cancelButton = document.getElementById('cancelNote');
+        const noteList = document.getElementById('noteList');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const userIdDisplay = document.getElementById('currentUserId');
+        
+        // ==========================================================
+        // 1. Firebase 초기화 및 인증
+        // ==========================================================
+
+        async function initFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length === 0) {
+                    console.error("Firebase config is missing.");
+                    return;
+                }
+                
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // 인증 상태 변경 리스너 설정
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("인증 성공, User ID:", userId);
+                    } else {
+                        // 사용자가 인증되지 않았지만, 익명 로그인 시도 후에도 user가 null일 수 있음.
+                        // 이 경우 onAuthStateChanged가 다시 호출될 것이므로,
+                        // 익명 로그인 시도가 실패한 경우에만 랜덤 UUID를 사용합니다.
+                        if (!auth.currentUser) {
+                           userId = crypto.randomUUID();
+                           console.log("익명 User ID:", userId);
+                        }
+                    }
+
+                    if (userId) {
+                        userIdDisplay.textContent = `User ID: ${userId}`; // ID 표시
+                        isAuthReady = true;
+                        // 인증 완료 후 실시간 노트 불러오기 시작
+                        setupNoteListener();
+                    }
+                });
+                
+                // 초기 인증 시도 (await를 통해 완료될 때까지 대기)
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Firebase 초기화 또는 인증 오류:", error);
+                loadingMessage.textContent = '앱 초기화 중 오류 발생: ' + error.message;
+                userIdDisplay.textContent = '인증 오류';
+            }
+        }
+
+        // ==========================================================
+        // 2. 노트 데이터 관리 (Firestore)
+        // ==========================================================
+
+        // Firestore 경로 설정 (개인 데이터)
+        const getNotesCollectionRef = (uid) => {
+            return collection(db, 'artifacts', appId, 'users', uid, 'notes');
+        };
+
+        // 실시간 노트 리스너 설정
+        function setupNoteListener() {
+            // isAuthReady와 userId가 모두 설정되었는지 확인
+            if (!isAuthReady || !userId || !db) return;
+            
+            const notesRef = getNotesCollectionRef(userId);
+            // Firestore 쿼리 (정렬은 인메모리에서 수행)
+            const q = query(notesRef); 
+
+            // onSnapshot을 사용하여 실시간으로 데이터 변경 감지
+            onSnapshot(q, (snapshot) => {
+                const notes = [];
+                snapshot.forEach(doc => {
+                    notes.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // 최신 편집 순으로 정렬 (in-memory sort)
+                notes.sort((a, b) => {
+                    const timeA = (a.updatedAt || a.createdAt);
+                    const timeB = (b.updatedAt || b.createdAt);
+                    // Firestore Timestamp 객체를 toMillis()로 비교하여 최신 순으로 정렬
+                    if (timeA && timeB) {
+                        return timeB.toMillis() - timeA.toMillis();
+                    }
+                    return 0; // 시간 정보가 없는 경우 정렬하지 않음
+                });
+                
+                renderNotes(notes);
+            }, (error) => {
+                // 권한 오류는 이미 보안 규칙으로 처리했지만, 만약을 대비해 로그를 남깁니다.
+                console.error("Firestore onSnapshot 오류:", error);
+                loadingMessage.textContent = '노트를 불러오는 중 오류 발생: 권한을 확인해주세요.';
+            });
+            loadingMessage.classList.add('hidden');
+        }
+
+        /**
+         * 새 노트를 Firestore에 저장합니다.
+         */
+        async function saveNewNote() {
+            if (!isAuthReady || !userId) {
+                console.log("인증 대기 중이므로 저장할 수 없습니다.");
+                return;
+            }
+
+            const content = noteContent.value.trim();
+            if (!content) {
+                console.log('내용을 입력해주세요.'); 
+                return;
+            }
+
+            const lines = content.split('\n').filter(line => line.trim() !== '');
+            const title = lines[0].trim() || '(제목 없음)';
+            const now = Timestamp.now();
+
+            let bodyContent;
+
+            if (selectedNoteType === 'CHECKLIST') {
+                // 체크리스트 항목을 구조화된 JSON 문자열로 저장
+                // 첫 줄은 제목이므로, 그 다음 줄부터 항목으로 처리
+                const checklistItems = lines.slice(1).map(line => ({
+                    text: line.trim(),
+                    checked: false 
+                }));
+                bodyContent = JSON.stringify(checklistItems);
+            } else { // TEXT
+                // 일반 텍스트는 제목(첫 줄)을 제외한 나머지 내용을 저장
+                bodyContent = lines.slice(1).join('\n').trim();
+            }
+
+            const noteData = {
+                title: title,
+                body: bodyContent,
+                color: selectedColor,
+                type: selectedNoteType, 
+                createdAt: now,
+                updatedAt: now,
+            };
+
+            try {
+                // Firestore에 데이터 추가
+                await addDoc(getNotesCollectionRef(userId), noteData);
+                console.log("노트 저장 성공");
+                closeModal();
+                noteContent.value = ''; // 입력 필드 초기화
+            } catch (error) {
+                console.error("노트 저장 중 오류:", error);
+                console.log("노트 저장에 실패했습니다."); 
+            }
+        }
+
+        // ==========================================================
+        // 3. UI 렌더링 및 이벤트 핸들러
+        // ==========================================================
+
+        /**
+         * 노트 목록을 화면에 렌더링합니다.
+         */
+        function renderNotes(notes) {
+            noteList.innerHTML = ''; // 기존 목록 초기화
+            if (notes.length === 0) {
+                noteList.innerHTML = `
+                    <div class="text-center py-20 text-gray-400">
+                        <p class="text-xl font-semibold">아직 작성된 노트가 없습니다.</p>
+                        <p class="text-sm mt-2">하단의 '+' 버튼을 눌러 첫 메모를 작성해보세요!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            notes.forEach(note => {
+                const element = createNoteCard(note);
+                noteList.appendChild(element);
+            });
+        }
+
+        /**
+         * 개별 노트 카드 HTML 요소를 생성합니다.
+         */
+        function createNoteCard(note) {
+            const card = document.createElement('div');
+            // 다크 모드 카드 스타일 적용 (bg-gray-800)
+            card.className = `note-card p-5 rounded-2xl bg-gray-800 border-l-4 shadow-md hover:shadow-lg transition cursor-pointer`;
+            card.style.borderColor = note.color; // 컬러 태그 적용
+
+            let previewContent = '';
+            let icon = '';
+            
+            if (note.type === 'CHECKLIST') {
+                icon = '✅ ';
+                try {
+                    const items = JSON.parse(note.body);
+                    const total = items.length;
+                    const checked = items.filter(item => item.checked).length;
+                    previewContent = `총 ${total}개 항목 중 ${checked}개 완료`;
+                } catch (e) {
+                    previewContent = `체크리스트 내용 오류`;
+                }
+            } else { // TEXT
+                icon = '📝 ';
+                previewContent = note.body.substring(0, 100).trim();
+                if (previewContent.length === 0) {
+                    previewContent = note.title; // 제목만 있는 경우
+                }
+                previewContent += (note.body.length > 100 ? '...' : '');
+            }
+
+            // 텍스트 색상을 다크 모드에 맞게 조정
+            card.innerHTML = `
+                <h3 class="text-lg font-bold mb-1 text-gray-100 truncate">${note.title}</h3>
+                <p class="text-sm text-gray-400 h-10 overflow-hidden">${icon}${previewContent}</p>
+                <div class="text-xs text-gray-500 mt-3 flex justify-between items-center">
+                    <span>${note.type === 'CHECKLIST' ? '체크리스트' : '일반 메모'}</span>
+                    <span>${new Date(note.updatedAt.toDate()).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+            `;
+            
+            card.addEventListener('click', () => {
+                // 실제 앱에서는 상세 보기/편집 화면으로 이동
+                console.log('노트 상세 보기:', note.id);
+            });
+
+            return card;
+        }
+
+        // ==========================================================
+        // 4. 모달 및 흐름 제어 (One Message)
+        // ==========================================================
+
+        /**
+         * 모달을 엽니다. (메모 유형 선택 화면)
+         */
+        function openModal() {
+            modal.classList.remove('hidden');
+            noteTypeSelection.classList.remove('hidden');
+            noteInputForm.classList.add('hidden');
+            document.body.style.overflow = 'hidden'; // 스크롤 방지
+        }
+
+        /**
+         * 모달을 닫고 상태를 초기화합니다.
+         */
+        function closeModal() {
+            modal.classList.add('hidden');
+            noteContent.value = '';
+            selectedColor = TOSS_COLORS[0];
+            selectedNoteType = null;
+            document.body.style.overflow = ''; 
+            
+            // 입력 필드 초기화 (텍스트 메모 기본 상태)
+            noteContent.placeholder = "내용을 입력하세요. (제목은 첫 줄로 자동 지정됩니다.)";
+            document.querySelector('#newNoteModal h2').textContent = '새로운 메모 생성';
+
+            // 색상 선택 UI 초기화
+            document.querySelectorAll('.color-option').forEach(btn => {
+                btn.classList.remove('ring-4', 'ring-offset-2');
+                if (btn.dataset.color === TOSS_COLORS[0]) {
+                    btn.classList.add('ring-4', 'ring-offset-2');
+                }
+            });
+        }
+
+        /**
+         * 색상 선택 버튼 UI를 렌더링하고 이벤트를 연결합니다.
+         */
+        function renderColorPicker() {
+            colorPicker.innerHTML = '';
+            TOSS_COLORS.forEach((color, index) => {
+                const button = document.createElement('button');
+                // 다크 모드에서는 테두리를 회색으로 설정
+                button.className = `color-option w-8 h-8 rounded-full border border-gray-600 transition duration-150 ease-in-out`;
+                button.style.backgroundColor = color;
+                button.dataset.color = color;
+                
+                // 첫 번째 색상을 기본 선택으로 설정
+                if (index === 0) {
+                    button.classList.add('ring-4', 'ring-offset-2');
+                }
+
+                button.addEventListener('click', () => {
+                    selectedColor = color;
+                    // 선택된 색상에 링 효과 적용 (토스 스타일)
+                    document.querySelectorAll('.color-option').forEach(btn => {
+                        btn.classList.remove('ring-4', 'ring-offset-2');
+                    });
+                    button.classList.add('ring-4', 'ring-offset-2');
+                });
+                colorPicker.appendChild(button);
+            });
+        }
+        
+        // ==========================================================
+        // 5. 초기 실행 및 이벤트 리스너 연결
+        // ==========================================================
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            renderColorPicker(); // 색상 선택 UI 미리 렌더링
+
+            // 1. FAB (플로팅 버튼) 클릭 시 모달 열기
+            fab.addEventListener('click', openModal);
+
+            // 2. 모달 내에서 메모 유형 선택 이벤트
+            document.querySelectorAll('.note-type-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    selectedNoteType = e.currentTarget.dataset.type;
+                    
+                    // 유형 선택 후 입력 폼으로 전환
+                    noteTypeSelection.classList.add('hidden');
+                    noteInputForm.classList.remove('hidden');
+                    
+                    // 입력 필드 및 제목 변경 (One Message 원칙)
+                    if (selectedNoteType === 'CHECKLIST') {
+                        noteContent.placeholder = "체크리스트 항목을 한 줄에 하나씩 입력하세요.\n(첫 줄은 제목으로 사용됩니다.)";
+                        document.querySelector('#newNoteModal h2').textContent = '체크리스트 작성';
+                    } else {
+                        noteContent.placeholder = "내용을 입력하세요. (제목은 첫 줄로 자동 지정됩니다.)";
+                        document.querySelector('#newNoteModal h2').textContent = '텍스트 메모 작성';
+                    }
+                    
+                    // 텍스트 영역에 포커스
+                    noteContent.focus(); 
+                });
+            });
+
+            // 3. 저장 버튼 클릭
+            saveButton.addEventListener('click', saveNewNote);
+
+            // 4. 취소 버튼 클릭 (모달 닫기)
+            cancelButton.addEventListener('click', closeModal);
+
+            // 5. 모달 외부 클릭 시 닫기
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+
+            // 6. 필터 및 캘린더 버튼 (기능은 미구현, UX만 제공)
+            document.getElementById('filterButton').addEventListener('click', () => {
+                console.log('필터/정렬 기능 - 토스처럼 심플한 바텀 시트 구현 필요');
+            });
+            document.getElementById('calendarButton').addEventListener('click', () => {
+                console.log('캘린더 기능 - 날짜별 색 라벨 메모 표시');
+            });
+        });
+
+    </script>
+</body>
+</html>
